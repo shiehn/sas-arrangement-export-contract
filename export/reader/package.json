@@ -1,0 +1,36 @@
+{
+  "name": "@signalsandsorcery/arrangement-export",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Read and validate Signals & Sorcery arrangement exports (export.json): the reference reader and the sas-export CLI.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "sas-export": "./dist/bin.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run && tsc --noEmit -p tsconfig.json",
+    "validate-fixtures": "node dist/bin.js validate ../fixtures/examples/*.json"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "2.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

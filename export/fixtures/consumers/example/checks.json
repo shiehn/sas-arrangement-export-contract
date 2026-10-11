@@ -1,0 +1,31 @@
+{
+  "about": "A template, not a real consumer: the values one tool relies on, checked against the format on every change. Copy this folder under a name of your own, add the export your tool reads (export.json) or point at an example, and list what you depend on.",
+  "export": "../../examples/export-1.2.0-score.json",
+  "checks": [
+    {
+      "pointer": "/sampleRate",
+      "equals": 48000,
+      "why": "frames become seconds at this rate"
+    },
+    {
+      "pointer": "/arrangement/instances/1/startFrame",
+      "equals": 384000,
+      "why": "the second section starts here (a cut)"
+    },
+    {
+      "pointer": "/score/meterMap/1/bar",
+      "equals": 13,
+      "why": "the bridge switches to 3/4 at this bar"
+    },
+    {
+      "pointer": "/score/bars/12/startFrame",
+      "equals": 1152000,
+      "why": "bar 13, the bridge's first downbeat"
+    },
+    {
+      "pointer": "/score/layers/1/notes/4/0",
+      "equals": 96000,
+      "why": "the kick's fifth hit: the first beat of bar 2"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: export/reader
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Build the reader and the CLI
+        run: npm run build
+      - name: Reader tests (every fixture, example and consumer check)
+        run: npm test
+      - name: Validate every example and consumer export with the CLI
+        run: |
+          shopt -s nullglob
+          node dist/bin.js validate ../fixtures/examples/*.json ../fixtures/consumers/*/export.json
