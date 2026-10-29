@@ -7,7 +7,8 @@
  *   minor only adds optional fields), with a warning; another major is refused.
  * - Validation: the JSON Schema of the file's version (bundled, no network),
  *   then the hashes the file carries that can be recomputed from it:
- *   `timingHash` and `scoreHash` when it has a score. (`arrangementHash`
+ *   `timingHash` and `scoreHash` when it has a score, and `lyricsHash` (1.4)
+ *   when the score carries the song's words. (`arrangementHash`
  *   covers loop positions an export doesn't carry, and audio hashes need the
  *   audio: neither is checked here.)
  */
@@ -63,7 +64,7 @@ function validatorFor(known: KnownSchema): Validate {
   return validate;
 }
 
-const NOT_CHECKED: HashChecks = { timing: 'not-checkable', score: 'not-checkable' };
+const NOT_CHECKED: HashChecks = { timing: 'not-checkable', score: 'not-checkable', lyrics: 'not-checkable' };
 
 /** Validate a parsed export.json (see the module comment). Never throws. */
 export function validateExport(json: unknown): Validation {
@@ -106,6 +107,7 @@ export function validateExport(json: unknown): Validation {
   const errors: string[] = [];
   if (hashes.timing === 'mismatch') errors.push('/timingHash does not match the timing it covers');
   if (hashes.score === 'mismatch') errors.push('/scoreHash does not match the score');
+  if (hashes.lyrics === 'mismatch') errors.push('/lyricsHash does not match the lyrics');
   return { ok: errors.length === 0, version, schemaVersion: known.version, errors, warnings, hashes };
 }
 
@@ -151,6 +153,7 @@ function resolve(file: ExportFile, v: Validation): ReadExport {
       s.firstBar = own.firstBar;
       s.lengthBars = own.lengthBars;
       if (own.role !== undefined) s.role = own.role;
+      if (own.lyrics) s.lyrics = [...own.lyrics.lines];
     }
     return s;
   });
@@ -193,12 +196,14 @@ function resolve(file: ExportFile, v: Validation): ReadExport {
     meterMap: score ? score.meterMap : null,
     bars: score ? score.bars : null,
     sections,
+    pickup: file.arrangement.pickup ? { ...file.arrangement.pickup } : null,
     layers,
     files: file.files,
     hashes: {
       timing: file.timingHash ?? null,
       arrangement: file.arrangementHash ?? null,
       score: file.scoreHash ?? null,
+      lyrics: file.lyricsHash ?? null,
       audio: file.files.map((f) => ({ file: f.file, kind: f.kind, sha256: f.sha256 })),
     },
     hashChecks: v.hashes,
@@ -229,7 +234,11 @@ export function timingPayloadOf(file: ExportFile): unknown | null {
       : null;
   });
   if (sections.some((s) => s === null)) return null;
-  return { v: 1, sampleRate: file.sampleRate, bpm: file.project.bpm, endFrame: file.arrangement.endFrame, sections };
+  const payload: Record<string, unknown> = { v: 1, sampleRate: file.sampleRate, bpm: file.project.bpm, endFrame: file.arrangement.endFrame, sections };
+  // 1.3: the pickup bars, in the meter of the bars they are.
+  const pickup = file.arrangement.pickup;
+  if (pickup) payload.pickup = { bars: pickup.bars, meter: meterAt(1 - pickup.bars), lengthFrames: pickup.lengthFrames };
+  return payload;
 }
 
 /** The score payload (`scoreHash`'s input). */
@@ -252,6 +261,12 @@ export function scorePayloadOf(score: Score, timingHash: string): unknown {
   };
 }
 
+/** The lyrics payload (`lyricsHash`'s input, 1.4); null when the score carries no words. */
+export function lyricsPayloadOf(score: Score): unknown | null {
+  if (!score.sections.some((s) => s.lyrics)) return null;
+  return { v: 1, sections: score.sections.map((s) => ({ id: s.instanceId, lines: s.lyrics?.lines ?? [] })) };
+}
+
 /** Recompute the hashes a file carries that its own content covers. */
 export function checkHashes(file: ExportFile): HashChecks {
   const check = (claimed: string | undefined, payload: unknown | null): HashCheck =>
@@ -259,5 +274,6 @@ export function checkHashes(file: ExportFile): HashChecks {
   return {
     timing: check(file.timingHash, timingPayloadOf(file)),
     score: check(file.scoreHash, file.score && file.timingHash !== undefined ? scorePayloadOf(file.score, file.timingHash) : null),
+    lyrics: check(file.lyricsHash, file.score ? lyricsPayloadOf(file.score) : null),
   };
 }

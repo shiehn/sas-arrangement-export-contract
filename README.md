@@ -37,7 +37,7 @@ node dist/bin.js info "My Song - export.json"
 ```
 
 `validate` checks a file against the schema of its version and recomputes the hashes it can
-(`timingHash`, and `scoreHash` with a score). It exits 0 when every file is valid and 1
+(`timingHash`, `scoreHash` with a score, and `lyricsHash` with the song's words). It exits 0 when every file is valid and 1
 otherwise, listing what's wrong. `info` prints a summary; `info --json` prints the export as
 the reader reads it.
 

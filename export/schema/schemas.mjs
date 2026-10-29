@@ -17,10 +17,12 @@ const numOrNull = { type: ['number', 'null'] };
 const nonEmpty = { type: 'string', minLength: 1 };
 const frame = { type: 'integer', minimum: 0 };
 
-/** Schema `version` (1.0.0, 1.1.0 or 1.2.0). */
+/** Schema `version` (1.0.0, 1.1.0, 1.2.0, 1.3.0 or 1.4.0). */
 export function buildSchema(version) {
   const v11 = version !== '1.0.0';
   const v12 = v11 && version !== '1.1.0';
+  const v13 = v12 && version !== '1.2.0';
+  const v14 = v13 && version !== '1.3.0';
 
   const instance = {
     type: 'object',
@@ -222,10 +224,27 @@ export function buildSchema(version) {
             endFrame: { ...frame, description: "The last bar's end, in `sampleRate` frames." },
           }
         : {}),
+      ...(v13
+        ? {
+            pickup: {
+              type: 'object',
+              description: 'The pickup bars before the first section (SPEC.md "Pickup bars"); absent when the song has none.',
+              required: ['bars', 'startFrame', 'lengthFrames', 'instanceId'],
+              properties: {
+                bars: { type: 'integer', minimum: 1 },
+                startFrame: { const: 0, description: 'The song starts with them.' },
+                lengthFrames: frame,
+                instanceId: { ...nonEmpty, description: 'The section they lead in to (= instances[0].instanceId), whose loop they play.' },
+              },
+            },
+          }
+        : {}),
     },
   };
 
   const bar = { type: 'integer', minimum: 1 };
+  /** A song bar: from 1.3 the pickup's bars are 0, −1 … (SPEC.md "Pickup bars"). */
+  const songBar = v13 ? { type: 'integer', description: 'Song bar: 1 = the first section\'s downbeat; the pickup bars are 0, −1 …' } : bar;
   const curve = { type: 'string', description: 'SPEC.md "Fades": equalPower (default; also any unknown name), linear, exponential, sCurve.' };
   const fade = { type: 'object', required: ['frames', 'curve'], properties: { frames: frame, curve } };
   const drumClass = { enum: ['kick', 'snare', 'hat', 'perc', 'cymbal', 'unknown'] };
@@ -239,17 +258,17 @@ export function buildSchema(version) {
       tempoMap: {
         type: 'array',
         minItems: 1,
-        items: { type: 'object', required: ['bar', 'beat', 'frame', 'bpm'], properties: { bar, beat: { type: 'number', minimum: 0 }, frame, bpm: { type: 'number', exclusiveMinimum: 0 } } },
+        items: { type: 'object', required: ['bar', 'beat', 'frame', 'bpm'], properties: { bar: songBar, beat: { type: 'number', minimum: 0 }, frame, bpm: { type: 'number', exclusiveMinimum: 0 } } },
       },
       meterMap: {
         type: 'array',
         items: {
           type: 'object',
           required: ['bar', 'beat', 'frame', 'numerator', 'denominator'],
-          properties: { bar, beat: { type: 'number', minimum: 0 }, frame, numerator: { type: 'integer', minimum: 1 }, denominator: { type: 'integer', minimum: 1 } },
+          properties: { bar: songBar, beat: { type: 'number', minimum: 0 }, frame, numerator: { type: 'integer', minimum: 1 }, denominator: { type: 'integer', minimum: 1 } },
         },
       },
-      bars: { type: 'array', items: { type: 'object', required: ['index', 'startFrame', 'lengthFrames'], properties: { index: bar, startFrame: frame, lengthFrames: frame } } },
+      bars: { type: 'array', items: { type: 'object', required: ['index', 'startFrame', 'lengthFrames'], properties: { index: songBar, startFrame: frame, lengthFrames: frame } } },
       sections: {
         type: 'array',
         items: {
@@ -260,10 +279,39 @@ export function buildSchema(version) {
             sourceSceneId: nonEmpty,
             firstBar: bar,
             lengthBars: { type: 'integer', minimum: 1 },
-            role: { type: 'string', description: 'The section\'s role in the song form; absent until the arrangement carries one.' },
+            role: v14
+              ? { ...nonEmpty, description: 'The section\'s part in the song form, as the host reads it, lower-case (verse, chorus, bridge …); absent when it gives none (SPEC.md "Lyrics").' }
+              : { type: 'string', description: 'The section\'s role in the song form; absent until the arrangement carries one.' },
+            ...(v14
+              ? {
+                  lyrics: {
+                    type: 'object',
+                    description: 'The words sung in this section (SPEC.md "Lyrics"): on every section when the song has words, absent on all when it has none.',
+                    required: ['lines'],
+                    properties: {
+                      lines: { type: 'array', items: { type: 'string' }, description: 'One line per sung phrase, in order; [] when nothing is sung here. A repeat carries its words in full.' },
+                    },
+                  },
+                }
+              : {}),
           },
         },
       },
+      ...(v13
+        ? {
+            pickup: {
+              type: 'object',
+              description: 'The pickup bars (SPEC.md "Pickup bars"): song bars firstBar … 0, played from the first section\'s loop; spans there name section "pickup".',
+              required: ['firstBar', 'bars', 'instanceId', 'sourceSceneId'],
+              properties: {
+                firstBar: { type: 'integer', maximum: 0 },
+                bars: { type: 'integer', minimum: 1 },
+                instanceId: nonEmpty,
+                sourceSceneId: nonEmpty,
+              },
+            },
+          }
+        : {}),
       layers: {
         type: 'array',
         items: {
@@ -284,8 +332,8 @@ export function buildSchema(version) {
                 required: ['section', 'startBar', 'endBar', 'startFrame', 'endFrame', 'gainDb', 'gainPoints'],
                 properties: {
                   section: nonEmpty,
-                  startBar: bar,
-                  endBar: bar,
+                  startBar: songBar,
+                  endBar: songBar,
                   startFrame: frame,
                   endFrame: frame,
                   continues: { const: true },
@@ -369,6 +417,7 @@ export function buildSchema(version) {
           }
         : {}),
       ...(v12 ? { scoreHash: { ...hex64, description: 'SPEC.md "Change detection"; present with score.' }, score } : {}),
+      ...(v14 ? { lyricsHash: { ...hex64, description: 'SPEC.md "Change detection"; present when the score carries the song\'s words.' } } : {}),
       schema: { const: 'sas-arrangement-export/1' },
       renderedAt: { type: 'string', format: 'date-time', description: 'When the export started (UTC).' },
       project: {
@@ -404,10 +453,12 @@ export const SCHEMA_FILES = {
   '1.0.0': 'sas-arrangement-export.v1.0.schema.json',
   '1.1.0': 'sas-arrangement-export.v1.1.schema.json',
   '1.2.0': 'sas-arrangement-export.v1.2.schema.json',
+  '1.3.0': 'sas-arrangement-export.v1.3.schema.json',
+  '1.4.0': 'sas-arrangement-export.v1.4.schema.json',
 };
 
 /** The latest 1.x. */
-export const LATEST_V1 = '1.2.0';
+export const LATEST_V1 = '1.4.0';
 export const ALIAS_FILE = 'sas-arrangement-export.v1.schema.json';
 
 /**

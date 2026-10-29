@@ -14,7 +14,8 @@ A reader that resolves `doc` with `catalog` should arrive at `expected`.
 
 The `score-*.json` files (1.2) also hold `tracks`: each layer's role and its loop's notes, as
 the project stores them. Their `expected` is the timing hash, the resolved `score` (SPEC.md
-"Score") and its `scoreHash`.
+"Score") and its `scoreHash`. `score-lyrics-per-section.json` (1.4) also holds `sections`: each
+section's role and words as the app passes them, and `expected.lyricsHash`.
 
 ## `consumers/`
 
@@ -47,5 +48,8 @@ Complete `export.json` files, each valid against the schema of the version it de
   48 kHz project.
 - `export-1.2.0-score.json`: with the score and its notes. It includes a whole kit on one layer
   (`drumMap`) and a layer without MIDI.
+- `export-1.3.0-pickup.json`: a song that starts on two pickup bars.
+- `export-1.4.0-lyrics.json`: a song with words. Each section has its role and lyrics, the
+  instrumental bridge has none (`[]`), and the file has a `lyricsHash`.
 
 Hashes of audio files and the engine are placeholders. Everything else is consistent.

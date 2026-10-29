@@ -60,6 +60,17 @@ describe('sas-export info', () => {
     expect(r.out.join('\n')).toMatch(/timing [0-9a-f]{12}… \(ok\)/);
   });
 
+  it('a 1.4 export with words: the lyrics line, roles beside the sections, and the lyrics hash checked', () => {
+    const r = cli('info', join(EXAMPLES, 'export-1.4.0-lyrics.json'));
+    const text = r.out.join('\n');
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('  lyrics: 7 lines in 2 of 3 sections');
+    expect(text).toMatch(/\(chorus\)/);
+    expect(text).toMatch(/lyrics [0-9a-f]{12}… \(ok\)/);
+    expect(cli('info', SCORED).out.some((l) => l.includes('lyrics'))).toBe(false);
+    expect(cli('validate', join(EXAMPLES, 'export-1.4.0-lyrics.json')).out[0]).toMatch(/\(1\.4\.0; timingHash ok, scoreHash ok, lyricsHash ok\)$/);
+  });
+
   it('--json prints the read export (without the raw file)', () => {
     const r = cli('info', SCORED, '--json');
     const read = JSON.parse(r.out.join('\n')) as Record<string, unknown>;

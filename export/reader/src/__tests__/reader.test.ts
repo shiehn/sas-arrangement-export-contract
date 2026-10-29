@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { canonicalJson, payloadHash } from '../canonical.js';
-import { ExportReadError, readExport, scorePayloadOf, validateExport } from '../read.js';
+import { ExportReadError, lyricsPayloadOf, readExport, scorePayloadOf, validateExport } from '../read.js';
 import { knownSchemas, latestKnown } from '../schemas.js';
 import { barAt, beatToFrame, framesToSeconds, sectionAt, secondsToFrames } from '../time.js';
 import type { ExportFile, Score } from '../types.js';
@@ -23,10 +23,52 @@ const SEMANTICS = readdirSync(`${FIXTURES}semantics`).filter((f) => f.endsWith('
 const SCORED = 'examples/export-1.2.0-score.json';
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
+describe('pickup bars (1.3)', () => {
+  it('the reader gives the pickup; the song starts with it; its bars are 0, −1 …; the timing hash covers it', () => {
+    const e = readExport(`${FIXTURES}examples/export-1.3.0-pickup.json`);
+    expect(e.pickup).toEqual({ bars: 2, startFrame: 0, lengthFrames: 192000, instanceId: e.sections[0].instanceId });
+    expect(e.sections[0]).toMatchObject({ startFrame: 192000, firstBar: 1 });
+    expect(e.bars!.slice(0, 3).map((b) => b.index)).toEqual([-1, 0, 1]);
+    expect(e.hashChecks).toEqual({ timing: 'ok', score: 'ok', lyrics: 'absent' });
+    const older = readExport(`${FIXTURES}examples/export-1.2.0-score.json`);
+    expect(older.pickup).toBeNull();
+  });
+});
+
+describe('lyrics (1.4)', () => {
+  const LYRICS = 'examples/export-1.4.0-lyrics.json';
+
+  it('each section gives its words and role; an instrumental one []; lyricsHash recomputes', () => {
+    const e = readExport(`${FIXTURES}${LYRICS}`);
+    expect(e.sections.map((s) => [s.role, s.lyrics?.length])).toEqual([
+      ['verse', 4],
+      ['chorus', 3],
+      ['bridge', 0],
+    ]);
+    expect(e.sections[1].lyrics![0]).toBe('So let it rise, let it rise');
+    expect(e.hashChecks).toEqual({ timing: 'ok', score: 'ok', lyrics: 'ok' });
+    expect(e.hashes.lyrics).toBe((json(LYRICS) as ExportFile).lyricsHash);
+    // A song without words: no lyrics on its sections, no lyricsHash.
+    const plain = readExport(`${FIXTURES}${SCORED}`);
+    expect([plain.sections.some((s) => 'lyrics' in s), plain.hashes.lyrics, plain.hashChecks.lyrics]).toEqual([false, null, 'absent']);
+  });
+
+  it('a changed word breaks lyricsHash and nothing else; a file whose words are gone cannot check it', () => {
+    const file = copy(json(LYRICS) as ExportFile);
+    file.score!.sections[0].lyrics!.lines[1] = 'Every window holds a song';
+    expect(validateExport(file)).toMatchObject({ ok: false, hashes: { timing: 'ok', score: 'ok', lyrics: 'mismatch' } });
+    expect(validateExport(file).errors).toContain('/lyricsHash does not match the lyrics');
+    const stripped = copy(json(LYRICS) as ExportFile);
+    for (const s of stripped.score!.sections) delete s.lyrics;
+    expect(lyricsPayloadOf(stripped.score!)).toBeNull();
+    expect(validateExport(stripped)).toMatchObject({ hashes: { lyrics: 'not-checkable' } });
+  });
+});
+
 describe('the schemas the reader knows', () => {
   it('every exact version in ../schema, oldest first; the newest 1.x is the latest', () => {
-    expect(knownSchemas().map((s) => s.version)).toEqual(['1.0.0', '1.1.0', '1.2.0']);
-    expect(latestKnown().version).toBe('1.2.0');
+    expect(knownSchemas().map((s) => s.version)).toEqual(['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0']);
+    expect(latestKnown().version).toBe('1.4.0');
   });
 });
 
@@ -43,7 +85,7 @@ describe('every example export', () => {
       expect(v.schemaVersion).toBe(file.exportVersion ?? '1.0.0');
       const e = readExport(`${FIXTURES}examples/${name}`);
       expect(e.sections.map((s) => [s.instanceId, s.startFrame])).toEqual(file.arrangement.instances.map((i) => [i.instanceId, i.startFrame]));
-      expect(e.tempoMap[0]).toMatchObject({ bar: 1, frame: 0, bpm: file.project.bpm });
+      expect(e.tempoMap[0]).toMatchObject({ bar: file.arrangement.pickup ? 1 - file.arrangement.pickup.bars : 1, frame: 0, bpm: file.project.bpm });
       expect(e.hashes.audio.map((a) => a.sha256)).toEqual(file.files.map((f) => f.sha256));
     });
   }
@@ -53,14 +95,14 @@ describe('every example export', () => {
     const e11 = readExport(`${FIXTURES}examples/export-1.1.0.json`);
     expect([e10.meterMap, e10.bars, e10.layers, e10.notes]).toEqual([null, null, null, undefined]);
     expect([e10.hashChecks, e11.hashChecks]).toEqual([
-      { timing: 'absent', score: 'absent' },
-      { timing: 'not-checkable', score: 'absent' },
+      { timing: 'absent', score: 'absent', lyrics: 'absent' },
+      { timing: 'not-checkable', score: 'absent', lyrics: 'absent' },
     ]);
   });
 
   it('1.2 with a score: both hashes rebuilt and equal; sections gain their scenes and bars; notes as objects, by frame', () => {
     const e = readExport(`${FIXTURES}${SCORED}`);
-    expect(e.hashChecks).toEqual({ timing: 'ok', score: 'ok' });
+    expect(e.hashChecks).toEqual({ timing: 'ok', score: 'ok', lyrics: 'absent' });
     expect(e.sections.map((s) => [s.sourceSceneId, s.firstBar, s.lengthBars])).toEqual([
       ['sc_a', 1, 4],
       ['sc_b', 5, 8],
@@ -91,6 +133,8 @@ describe('every semantic fixture: its hashes recompute with the reader\'s hash r
       const x = f.expected;
       if ('score' in x) {
         expect(payloadHash(scorePayloadOf(x.score as Score, x.timingHash as string))).toBe(x.scoreHash);
+        const lyrics = lyricsPayloadOf(x.score as Score);
+        expect(lyrics === null ? undefined : payloadHash(lyrics)).toBe(x.lyricsHash);
       } else {
         expect(payloadHash(x.timing)).toBe(x.timingHash);
         expect(payloadHash(x.arrangement)).toBe(x.arrangementHash);
@@ -146,7 +190,7 @@ describe('the version rule', () => {
 
   it('a higher minor is read against the newest schema known, with a warning; a lower minor against its own', () => {
     const newer = refused((e) => ((e.exportVersion = '1.9.0'), (e.someFutureField = { x: 1 })));
-    expect([newer.ok, newer.schemaVersion, newer.warnings.length]).toEqual([true, '1.2.0', 1]);
+    expect([newer.ok, newer.schemaVersion, newer.warnings.length]).toEqual([true, '1.4.0', 1]);
     expect(refused((e) => (e.exportVersion = '1.1.4'))).toMatchObject({ ok: true, schemaVersion: '1.1.0' });
     expect(refused((e) => delete e.exportVersion)).toMatchObject({ ok: true, version: '1.0.0', schemaVersion: '1.0.0' });
   });

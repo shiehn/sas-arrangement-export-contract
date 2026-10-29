@@ -80,8 +80,20 @@ export interface Score {
   tempoMap: TempoEntry[];
   meterMap: MeterEntry[];
   bars: Bar[];
-  sections: Array<{ instanceId: string; sourceSceneId: string; firstBar: number; lengthBars: number; role?: string }>;
+  /** 1.4: `role` from the host, `lyrics` on every section when the song has words. */
+  sections: Array<{ instanceId: string; sourceSceneId: string; firstBar: number; lengthBars: number; role?: string; lyrics?: { lines: string[] } }>;
+  /** 1.3: the pickup bars (song bars firstBar … 0); absent when none. */
+  pickup?: { firstBar: number; bars: number; instanceId: string; sourceSceneId: string };
   layers: ScoreLayer[];
+}
+
+/** 1.3: the song's pickup bars, before the first section, from frame 0. */
+export interface Pickup {
+  bars: number;
+  startFrame: number;
+  lengthFrames: number;
+  /** The section they lead in to, whose loop they play. */
+  instanceId: string;
 }
 
 export interface FileEntry {
@@ -114,11 +126,14 @@ export interface ExportFile {
     instances: Array<{ instanceId: string; label: string | null; startFrame: number; lengthFrames: number }>;
     revision?: { seq: number; docHash: string };
     endFrame?: number;
+    pickup?: Pickup;
   };
   contractVersion: string;
   timingHash?: string;
   arrangementHash?: string;
   scoreHash?: string;
+  /** 1.4: present when the score carries the song's words. */
+  lyricsHash?: string;
   score?: Score;
   sampleRate: number;
   lengthSeconds: number;
@@ -143,6 +158,8 @@ export interface Section {
   firstBar?: number;
   lengthBars?: number;
   role?: string;
+  /** 1.4: the words sung here, one line per phrase ([] = none); absent when the song has no words. */
+  lyrics?: string[];
 }
 
 export interface LayerNote {
@@ -171,6 +188,8 @@ export type HashCheck = 'ok' | 'mismatch' | 'absent' | 'not-checkable';
 export interface HashChecks {
   timing: HashCheck;
   score: HashCheck;
+  /** 1.4 */
+  lyrics: HashCheck;
 }
 
 export interface ReadExport {
@@ -191,12 +210,14 @@ export interface ReadExport {
   /** The score's; null without a score. */
   bars: Bar[] | null;
   sections: Section[];
+  /** 1.3: the pickup bars before the first section; null when the song has none. */
+  pickup: Pickup | null;
   /** The score's layers; null without a score. */
   layers: Layer[] | null;
   /** Every layer's notes, when the score has them. */
   notes?: Note[];
   files: FileEntry[];
-  hashes: { timing: string | null; arrangement: string | null; score: string | null; audio: Array<{ file: string; kind: string; sha256: string }> };
+  hashes: { timing: string | null; arrangement: string | null; score: string | null; lyrics: string | null; audio: Array<{ file: string; kind: string; sha256: string }> };
   hashChecks: HashChecks;
   warnings: string[];
   /** The validated file. */

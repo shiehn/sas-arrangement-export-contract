@@ -76,10 +76,16 @@ function info(path: string, json: boolean, io: Io): number {
   io.out(`${e.name} — export ${e.version}${e.schemaVersion !== e.version ? ` (read as ${e.schemaVersion})` : ''}`);
   io.out(`  ${e.sampleRate} Hz · ${e.project.bpm} bpm · ${bars}${s(e.endFrame)} (files ${e.lengthSeconds.toFixed(3)} s with the tail)`);
   if (e.meterMap && e.meterMap.length > 1) io.out(`  meters: ${e.meterMap.map((m) => `bar ${m.bar} ${m.numerator}/${m.denominator}`).join(', ')}`);
+  if (e.pickup) io.out(`  pickup: ${e.pickup.bars} bar${e.pickup.bars === 1 ? '' : 's'} (song bars ${1 - e.pickup.bars} … 0, ${s(e.pickup.lengthFrames)}) into ${e.pickup.instanceId}`);
   io.out(`  sections: ${e.sections.length}`);
   for (const sec of e.sections) {
     const where = sec.firstBar !== undefined ? `bar ${sec.firstBar}, ${sec.lengthBars} bars` : `${s(sec.lengthFrames)}`;
     io.out(`    ${(sec.label ?? sec.instanceId).padEnd(18)} ${s(sec.startFrame).padStart(11)}  ${where}${sec.role ? `  (${sec.role})` : ''}`);
+  }
+  const sung = e.sections.filter((sec) => sec.lyrics && sec.lyrics.length > 0);
+  if (sung.length > 0) {
+    const lines = sung.reduce((n, sec) => n + sec.lyrics!.length, 0);
+    io.out(`  lyrics: ${lines} line${lines === 1 ? '' : 's'} in ${sung.length} of ${e.sections.length} sections`);
   }
   if (e.layers) {
     const buckets = new Map<string, number>();
@@ -91,7 +97,7 @@ function info(path: string, json: boolean, io: Io): number {
   for (const f of e.files) kinds.set(f.kind, (kinds.get(f.kind) ?? 0) + 1);
   io.out(`  files: ${e.files.length} (${[...kinds].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(', ')})`);
   const h = (x: string | null) => (x ? `${x.slice(0, 12)}…` : '—');
-  io.out(`  hashes: timing ${h(e.hashes.timing)} (${e.hashChecks.timing}) · arrangement ${h(e.hashes.arrangement)} · score ${h(e.hashes.score)} (${e.hashChecks.score})`);
+  io.out(`  hashes: timing ${h(e.hashes.timing)} (${e.hashChecks.timing}) · arrangement ${h(e.hashes.arrangement)} · score ${h(e.hashes.score)} (${e.hashChecks.score})${e.hashes.lyrics ? ` · lyrics ${h(e.hashes.lyrics)} (${e.hashChecks.lyrics})` : ''}`);
   for (const w of e.warnings) io.out(`  warning: ${w}`);
   return 0;
 }
